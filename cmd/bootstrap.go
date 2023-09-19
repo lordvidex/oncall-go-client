@@ -34,5 +34,8 @@ func main() {
 	err = client.LoadConfig(filename)
 	if err != nil {
 		logger.Error().Err(err).Send()
+		return
 	}
+
+	logger.Info().Msgf("finished loading configs from %s", filename)
 }

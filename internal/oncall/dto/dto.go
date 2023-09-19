@@ -22,3 +22,11 @@ type ContactsDTO struct {
 	SMS   string `json:"sms,omitempty"`
 	Slack string `json:"slack,omitempty"`
 }
+
+type ScheduleDTO struct {
+	Username      string `json:"user,omitempty"`
+	Teamname      string `json:"team,omitempty"`
+	Role          string `json:"role,omitempty"`
+	StartTimeUnix int64  `json:"start,omitempty"`
+	EndTimeUnix   int64  `json:"end,omitempty"`
+}
