@@ -32,9 +32,7 @@ var (
 	ErrInvalidRequest  = errors.New("invalid request")
 )
 
-var (
-	defaultTimeout = time.Second * 10
-)
+var defaultTimeout = time.Second * 10
 
 // Client is the handler that makes request to oncall server for this client app
 type Client struct {
@@ -165,7 +163,6 @@ func (c *Client) CreateSchedule(username, teamname string, schedule []Duty) erro
 		return errors.Join(errs...)
 	}
 	return nil
-
 }
 
 func (c *Client) addDayDuty(duty Duty, username, teamname string) error {
@@ -382,7 +379,6 @@ func (c *Client) CreateTeam(t Team) error {
 		if err != nil {
 			logger.Warn().Err(err).
 				Msg("error adding user to team")
-
 		}
 		err = c.CreateSchedule(u.Name, t.Name, u.Schedule)
 		if err != nil {
