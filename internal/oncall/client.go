@@ -246,6 +246,8 @@ func (c *Client) existsDayDuty(username, teamname string, start, end int64, role
 	q.Add("end", strconv.FormatInt(end, 10))
 	q.Add("role", role)
 
+	req.URL.RawQuery = q.Encode()
+
 	res, err := c.httpClient.Do(req)
 	if err != nil {
 		c.logger.Err(err).Msg("error checking for day duty")
