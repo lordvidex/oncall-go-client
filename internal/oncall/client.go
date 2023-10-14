@@ -391,6 +391,72 @@ func (c *Client) CreateTeam(t Team) error {
 	return nil
 }
 
+func (c *Client) GetTeams() ([]string, error) {
+	logger := c.logger.With().Str("action", "get_teams").Logger()
+	endpoint, err := url.JoinPath(c.oncallURL, teamsEndpoint)
+	if err != nil {
+		return nil, ErrInvalidEndpoint
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	if err != nil {
+		logger.Error().Caller().Err(err).Send()
+		return nil, ErrInvalidRequest
+	}
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		logger.Error().Caller().Err(err).Msg("error fetching teams")
+		return nil, err
+	}
+	defer res.Body.Close()
+	logger.Info().Int("status_code", res.StatusCode).Send()
+
+	var result []string
+	if err = json.NewDecoder(res.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (c *Client) GetSummary(team string) (map[string]int, error) {
+	logger := c.logger.With().Str("action", "get current summary of roster").Logger()
+	endpoint, err := url.JoinPath(c.oncallURL, teamsEndpoint, team, "summary")
+	if err != nil {
+		return nil, ErrInvalidEndpoint
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	if err != nil {
+		logger.Error().Caller().Err(err).Send()
+		return nil, ErrInvalidRequest
+	}
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		logger.Error().Caller().Err(err).Msg("error fetching summary")
+		return nil, err
+	}
+	defer res.Body.Close()
+	logger.Info().Int("status_code", res.StatusCode).Send()
+
+	var response map[string]interface{}
+	if err = json.NewDecoder(res.Body).Decode(&response); err != nil {
+		return nil, err
+	}
+	if _, ok := response["current"]; ok {
+		currentSummary := response["current"].(map[string][]any)
+		result := make(map[string]int)
+		for k, v := range currentSummary {
+			result[k] = len(v)
+		}
+		return result, nil
+	}
+	return nil, nil
+}
+
 func (c *Client) AddUserToTeam(username, teamname string) error {
 	logger := c.logger.With().Str("action", "add_user_to_team").Logger()
 	logger.Info().Msgf("adding user %s to team %s", username, teamname)
