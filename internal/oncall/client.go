@@ -14,9 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lordvidex/oncall-go-client/internal/oncall/dto"
 	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v3"
+
+	"github.com/lordvidex/oncall-go-client/internal/oncall/dto"
 )
 
 const (
@@ -442,12 +443,12 @@ func (c *Client) GetSummary(team string) (map[string]int, error) {
 	defer res.Body.Close()
 	logger.Info().Int("status_code", res.StatusCode).Send()
 
-	var response map[string]interface{}
+	var response map[string]map[string][]any
 	if err = json.NewDecoder(res.Body).Decode(&response); err != nil {
 		return nil, err
 	}
 	if _, ok := response["current"]; ok {
-		currentSummary := response["current"].(map[string][]any)
+		currentSummary := response["current"]
 		result := make(map[string]int)
 		for k, v := range currentSummary {
 			result[k] = len(v)
