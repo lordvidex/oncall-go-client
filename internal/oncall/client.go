@@ -392,7 +392,7 @@ func (c *Client) CreateTeam(t Team) error {
 	return nil
 }
 
-func (c *Client) GetTeams() (Response[[]string], error) {
+func (c *Client) GetTeams() (*Response[[]string], error) {
 	logger := c.logger.With().Str("action", "get_teams").Logger()
 	endpoint, err := url.JoinPath(c.oncallURL, teamsEndpoint)
 	if err != nil {
@@ -406,8 +406,9 @@ func (c *Client) GetTeams() (Response[[]string], error) {
 		logger.Error().Caller().Err(err).Send()
 		return nil, ErrInvalidRequest
 	}
-
-	var result Response[[]string]
+	result := Response[[]string]{
+		RequestURL: endpoint,
+	}
 	startTime := time.Now()
 
 	// perform request
@@ -426,10 +427,10 @@ func (c *Client) GetTeams() (Response[[]string], error) {
 	if err = json.NewDecoder(res.Body).Decode(&result.Data); err != nil {
 		return nil, err
 	}
-	return result, nil
+	return &result, nil
 }
 
-func (c *Client) GetSummary(team string) (Response[map[string]int], error) {
+func (c *Client) GetSummary(team string) (*Response[map[string]int], error) {
 	logger := c.logger.With().Str("action", "get current summary of roster").Logger()
 	endpoint, err := url.JoinPath(c.oncallURL, teamsEndpoint, team, "summary")
 	if err != nil {
@@ -444,8 +445,9 @@ func (c *Client) GetSummary(team string) (Response[map[string]int], error) {
 		return nil, ErrInvalidRequest
 	}
 
-	result := Response[map[string]int]
-		Data: make(map[string]int),
+	result := Response[map[string]int]{
+		Data:       make(map[string]int),
+		RequestURL: endpoint,
 	}
 	startTime := time.Now()
 
@@ -471,9 +473,8 @@ func (c *Client) GetSummary(team string) (Response[map[string]int], error) {
 		for k, v := range currentSummary {
 			result.Data[k] = len(v)
 		}
-		return result, nil
 	}
-	return nil, nil
+	return &result, nil
 }
 
 func (c *Client) AddUserToTeam(username, teamname string) error {

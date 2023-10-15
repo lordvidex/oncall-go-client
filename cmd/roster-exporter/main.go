@@ -9,27 +9,35 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/lordvidex/oncall-go-client/internal/oncall"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
+
+	"github.com/lordvidex/oncall-go-client/internal/oncall"
 )
 
 var (
-	availableTeamMembers = prometheus.NewGaugeVec(
+	availableTeamMembersGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "oncall_avail_users",
 			Help: "The number of current available team members that are in rotation and can be contacted for work",
 		},
 		[]string{"role", "team"},
 	)
-	statusCodes = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "oncall_http_status_code"
+	requestDurationHist = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "oncall_http_request_duration_seconds",
+			Help: "HTTP request duration in seconds made to the oncall server to gather metrics.",
+		},
+		[]string{"endpoint"},
+	)
+	statusCodeHist = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "oncall_http_status_code",
 			Help: "http status codes when getting available team members in oncall",
 		},
+		[]string{"endpoint"},
 	)
-	// requestDurations = prometheus.
 )
 
 var (
@@ -43,7 +51,9 @@ func init() {
 	flag.StringVar(&oncallURL, "oncall", "http://oncall-web:8080", "url of the oncall server")
 	flag.IntVar(&port, "port", 9213, "port for hosting metrics")
 
-	prometheus.MustRegister(availableTeamMembers)
+	prometheus.MustRegister(availableTeamMembersGauge)
+	prometheus.MustRegister(requestDurationHist)
+	prometheus.MustRegister(statusCodeHist)
 }
 
 func main() {
@@ -119,18 +129,20 @@ func (a *app) updateMetrics() error {
 	if err != nil {
 		return err
 	}
+	requestDurationHist.WithLabelValues(teamsResult.RequestURL).Observe(teamsResult.ResponseTime.Seconds())
+	statusCodeHist.WithLabelValues(teamsResult.RequestURL).Observe(float64(teamsResult.StatusCode))
+
 	var errs []error
-	for _, t := range teams {
-		data, err := a.cl.GetSummary(t)
+	for _, team := range teamsResult.Data {
+		data, err := a.cl.GetSummary(team)
 		if err != nil {
 			errs = append(errs, err)
 			continue
 		}
-		if data == nil {
-			continue
-		}
-		for k, v := range data {
-			availableTeamMembers.WithLabelValues(k, t).Set(float64(v))
+		requestDurationHist.WithLabelValues(data.RequestURL).Observe(data.ResponseTime.Seconds())
+		statusCodeHist.WithLabelValues(data.RequestURL).Observe(float64(data.StatusCode))
+		for role, count := range data.Data {
+			availableTeamMembersGauge.WithLabelValues(role, team).Set(float64(count))
 		}
 	}
 	return errors.Join(errs...)

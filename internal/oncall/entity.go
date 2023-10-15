@@ -30,9 +30,10 @@ type Duty struct {
 }
 
 // Response helps to record the time taken for a request
-// and the   status code returned for that request
+// and the status code returned for that request
 type Response[T any] struct {
 	Data         T
+	RequestURL   string
 	ResponseTime time.Duration
 	StatusCode   int
 }
