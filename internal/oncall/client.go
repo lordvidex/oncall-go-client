@@ -407,7 +407,7 @@ func (c *Client) GetTeams() (*Response[[]string], error) {
 		return nil, ErrInvalidRequest
 	}
 	result := Response[[]string]{
-		RequestURL: endpoint,
+		URLPath: req.URL.Path,
 	}
 	startTime := time.Now()
 
@@ -446,8 +446,8 @@ func (c *Client) GetSummary(team string) (*Response[map[string]int], error) {
 	}
 
 	result := Response[map[string]int]{
-		Data:       make(map[string]int),
-		RequestURL: endpoint,
+		Data:    make(map[string]int),
+		URLPath: req.URL.Path,
 	}
 	startTime := time.Now()
 

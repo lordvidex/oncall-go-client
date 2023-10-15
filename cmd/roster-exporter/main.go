@@ -29,14 +29,15 @@ var (
 			Name: "oncall_http_request_duration_seconds",
 			Help: "HTTP request duration in seconds made to the oncall server to gather metrics.",
 		},
-		[]string{"endpoint"},
+		[]string{"path"},
 	)
 	statusCodeHist = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name: "oncall_http_status_code",
-			Help: "http status codes when getting available team members in oncall",
+			Name:    "oncall_http_status_code",
+			Help:    "http status codes when getting available team members in oncall",
+			Buckets: []float64{299, 399, 499, 599},
 		},
-		[]string{"endpoint"},
+		[]string{"path"},
 	)
 )
 
@@ -129,8 +130,8 @@ func (a *app) updateMetrics() error {
 	if err != nil {
 		return err
 	}
-	requestDurationHist.WithLabelValues(teamsResult.RequestURL).Observe(teamsResult.ResponseTime.Seconds())
-	statusCodeHist.WithLabelValues(teamsResult.RequestURL).Observe(float64(teamsResult.StatusCode))
+	requestDurationHist.WithLabelValues(teamsResult.URLPath).Observe(teamsResult.ResponseTime.Seconds())
+	statusCodeHist.WithLabelValues(teamsResult.URLPath).Observe(float64(teamsResult.StatusCode))
 
 	var errs []error
 	for _, team := range teamsResult.Data {
@@ -139,8 +140,8 @@ func (a *app) updateMetrics() error {
 			errs = append(errs, err)
 			continue
 		}
-		requestDurationHist.WithLabelValues(data.RequestURL).Observe(data.ResponseTime.Seconds())
-		statusCodeHist.WithLabelValues(data.RequestURL).Observe(float64(data.StatusCode))
+		requestDurationHist.WithLabelValues(data.URLPath).Observe(data.ResponseTime.Seconds())
+		statusCodeHist.WithLabelValues(data.URLPath).Observe(float64(data.StatusCode))
 		for role, count := range data.Data {
 			availableTeamMembersGauge.WithLabelValues(role, team).Set(float64(count))
 		}

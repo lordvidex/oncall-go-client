@@ -33,7 +33,7 @@ type Duty struct {
 // and the status code returned for that request
 type Response[T any] struct {
 	Data         T
-	RequestURL   string
+	URLPath      string
 	ResponseTime time.Duration
 	StatusCode   int
 }
