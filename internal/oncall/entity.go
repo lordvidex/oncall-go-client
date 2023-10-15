@@ -1,5 +1,9 @@
 package oncall
 
+import (
+	"time"
+)
+
 type Config struct {
 	Teams []Team `yaml:"teams"`
 }
@@ -23,4 +27,12 @@ type User struct {
 type Duty struct {
 	Date string `yaml:"date"`
 	Role string `yaml:"role"`
+}
+
+// Response helps to record the time taken for a request
+// and the   status code returned for that request
+type Response[T any] struct {
+	Data         T
+	ResponseTime time.Duration
+	StatusCode   int
 }

@@ -392,7 +392,7 @@ func (c *Client) CreateTeam(t Team) error {
 	return nil
 }
 
-func (c *Client) GetTeams() ([]string, error) {
+func (c *Client) GetTeams() (Response[[]string], error) {
 	logger := c.logger.With().Str("action", "get_teams").Logger()
 	endpoint, err := url.JoinPath(c.oncallURL, teamsEndpoint)
 	if err != nil {
@@ -406,22 +406,30 @@ func (c *Client) GetTeams() ([]string, error) {
 		logger.Error().Caller().Err(err).Send()
 		return nil, ErrInvalidRequest
 	}
+
+	var result Response[[]string]
+	startTime := time.Now()
+
+	// perform request
 	res, err := c.httpClient.Do(req)
 	if err != nil {
 		logger.Error().Caller().Err(err).Msg("error fetching teams")
 		return nil, err
 	}
 	defer res.Body.Close()
+
+	// record metrics
+	result.ResponseTime = time.Since(startTime)
+	result.StatusCode = res.StatusCode
 	logger.Info().Int("status_code", res.StatusCode).Send()
 
-	var result []string
-	if err = json.NewDecoder(res.Body).Decode(&result); err != nil {
+	if err = json.NewDecoder(res.Body).Decode(&result.Data); err != nil {
 		return nil, err
 	}
 	return result, nil
 }
 
-func (c *Client) GetSummary(team string) (map[string]int, error) {
+func (c *Client) GetSummary(team string) (Response[map[string]int], error) {
 	logger := c.logger.With().Str("action", "get current summary of roster").Logger()
 	endpoint, err := url.JoinPath(c.oncallURL, teamsEndpoint, team, "summary")
 	if err != nil {
@@ -435,12 +443,23 @@ func (c *Client) GetSummary(team string) (map[string]int, error) {
 		logger.Error().Caller().Err(err).Send()
 		return nil, ErrInvalidRequest
 	}
+
+	result := Response[map[string]int]
+		Data: make(map[string]int),
+	}
+	startTime := time.Now()
+
+	// perform request
 	res, err := c.httpClient.Do(req)
 	if err != nil {
 		logger.Error().Caller().Err(err).Msg("error fetching summary")
 		return nil, err
 	}
 	defer res.Body.Close()
+
+	// record metrics
+	result.ResponseTime = time.Since(startTime)
+	result.StatusCode = res.StatusCode
 	logger.Info().Int("status_code", res.StatusCode).Send()
 
 	var response map[string]map[string][]any
@@ -449,9 +468,8 @@ func (c *Client) GetSummary(team string) (map[string]int, error) {
 	}
 	if _, ok := response["current"]; ok {
 		currentSummary := response["current"]
-		result := make(map[string]int)
 		for k, v := range currentSummary {
-			result[k] = len(v)
+			result.Data[k] = len(v)
 		}
 		return result, nil
 	}

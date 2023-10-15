@@ -23,6 +23,13 @@ var (
 		},
 		[]string{"role", "team"},
 	)
+	statusCodes = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "oncall_http_status_code"
+			Help: "http status codes when getting available team members in oncall",
+		},
+	)
+	// requestDurations = prometheus.
 )
 
 var (
@@ -108,7 +115,7 @@ func (a *app) login() error {
 }
 
 func (a *app) updateMetrics() error {
-	teams, err := a.cl.GetTeams()
+	teamsResult, err := a.cl.GetTeams()
 	if err != nil {
 		return err
 	}
