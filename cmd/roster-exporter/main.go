@@ -24,6 +24,13 @@ var (
 		},
 		[]string{"role", "team"},
 	)
+	errorsCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "oncall_http_errors_total",
+			Help: "Amount of http errors encountered while contacting oncall web service",
+		},
+		[]string{"path"},
+	)
 	requestDurationHist = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name: "oncall_http_request_duration_seconds",
@@ -45,16 +52,19 @@ var (
 	scrapeStr string
 	oncallURL string
 	port      int
+	silent    bool
 )
 
 func init() {
 	flag.StringVar(&scrapeStr, "scrape-duration", "30s", "interval to update and fetch new metrics")
 	flag.StringVar(&oncallURL, "oncall", "http://oncall-web:8080", "url of the oncall server")
 	flag.IntVar(&port, "port", 9213, "port for hosting metrics")
+	flag.BoolVar(&silent, "silent", false, "if true, logs are not printed for oncall client")
 
 	prometheus.MustRegister(availableTeamMembersGauge)
 	prometheus.MustRegister(requestDurationHist)
 	prometheus.MustRegister(statusCodeHist)
+	prometheus.MustRegister(errorsCounter)
 }
 
 func main() {
@@ -91,7 +101,11 @@ type app struct {
 }
 
 func NewApp(logger zerolog.Logger, oncallURL string, scrapeDuration time.Duration) (*app, error) {
-	cl, err := oncall.New(oncall.WithURL(oncallURL))
+	opts := []oncall.Option{oncall.WithURL(oncallURL)}
+	if silent {
+		opts = append(opts, oncall.WithLogger(zerolog.Nop()))
+	}
+	cl, err := oncall.New(opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -128,6 +142,7 @@ func (a *app) login() error {
 func (a *app) updateMetrics() error {
 	teamsResult, err := a.cl.GetTeams()
 	if err != nil {
+		errorsCounter.WithLabelValues("teams").Inc()
 		return err
 	}
 	requestDurationHist.WithLabelValues(teamsResult.URLPath).Observe(teamsResult.ResponseTime.Seconds())
@@ -138,6 +153,7 @@ func (a *app) updateMetrics() error {
 		data, err := a.cl.GetSummary(team)
 		if err != nil {
 			errs = append(errs, err)
+			errorsCounter.WithLabelValues("teams/" + team).Inc()
 			continue
 		}
 		requestDurationHist.WithLabelValues(data.URLPath).Observe(data.ResponseTime.Seconds())

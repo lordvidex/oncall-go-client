@@ -54,6 +54,12 @@ func WithURL(oncallURL string) Option {
 	}
 }
 
+func WithLogger(l zerolog.Logger) Option {
+	return func(c *Client) {
+		c.logger = l
+	}
+}
+
 // New creates a new oncall Client and logs in the client. An error can also be returned.
 func New(opts ...Option) (*Client, error) {
 	// create jar to store cookoo
