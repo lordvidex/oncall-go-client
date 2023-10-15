@@ -149,6 +149,7 @@ func (a *app) updateMetrics() error {
 		errorsCounter.WithLabelValues("teams").Inc()
 		return err
 	}
+	errorsCounter.WithLabelValues("teams").Add(0) // to write metrics
 	requestDurationHist.WithLabelValues(teamsResult.URLPath).Observe(teamsResult.ResponseTime.Seconds())
 	statusCodeHist.WithLabelValues(teamsResult.URLPath).Observe(float64(teamsResult.StatusCode))
 
@@ -162,6 +163,7 @@ func (a *app) updateMetrics() error {
 		}
 		requestDurationHist.WithLabelValues(data.URLPath).Observe(data.ResponseTime.Seconds())
 		statusCodeHist.WithLabelValues(data.URLPath).Observe(float64(data.StatusCode))
+		errorsCounter.WithLabelValues("teams/" + team).Add(0)
 		for _, role := range roles {
 			availableTeamMembersGauge.WithLabelValues(role, team).Set(float64(data.Data[role]))
 		}
