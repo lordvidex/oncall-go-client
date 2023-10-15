@@ -17,6 +17,10 @@ import (
 )
 
 var (
+	roles = []string{"primary", "manager"}
+)
+
+var (
 	availableTeamMembersGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "oncall_avail_users",
@@ -158,8 +162,8 @@ func (a *app) updateMetrics() error {
 		}
 		requestDurationHist.WithLabelValues(data.URLPath).Observe(data.ResponseTime.Seconds())
 		statusCodeHist.WithLabelValues(data.URLPath).Observe(float64(data.StatusCode))
-		for role, count := range data.Data {
-			availableTeamMembersGauge.WithLabelValues(role, team).Set(float64(count))
+		for _, role := range roles {
+			availableTeamMembersGauge.WithLabelValues(role, team).Set(float64(data.Data[role]))
 		}
 	}
 	return errors.Join(errs...)
