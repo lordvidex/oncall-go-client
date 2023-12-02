@@ -159,6 +159,7 @@ func (a *app) worker(ctx context.Context) {
 
 func (a *app) runScenarios() error {
 	stats, err := a.cl.CreateEntities(a.config)
+	defer a.cl.DeleteEntities(a.config)
 	if err != nil {
 		a.logger.Warn().Err(err).Msg("entities error")
 	}

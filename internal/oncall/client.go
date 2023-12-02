@@ -157,6 +157,16 @@ func (c *Client) CreateEntities(config Config) (map[string]*TeamResponse, error)
 	return res, err
 }
 
+func (c *Client) DeleteEntities(config Config) error {
+	for _, t := range config.Teams {
+		for _, u := range t.Users {
+			c.DeleteUserFromTeam(u.Name, t.Name)
+			c.DeleteUser(u.Name)
+		}
+	}
+	return nil
+}
+
 func (c *Client) CreateSchedule(username, teamname string, schedule []Duty) error {
 	logger := c.logger.With().
 		Caller().
@@ -413,7 +423,9 @@ func (c *Client) CreateTeam(t Team) (*TeamResponse, error) {
 	req.Header.Set("X-CSRF-TOKEN", c.csrfToken)
 
 	result := TeamResponse{
-		Response: &Response[any]{},
+		Response:               &Response[any]{},
+		UserCreateResponses:    make(map[string]*Response[any]),
+		UserAddToTeamResponses: make(map[string]*Response[any]),
 	}
 
 	startTime := time.Now()
