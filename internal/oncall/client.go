@@ -519,9 +519,10 @@ func (c *Client) DeleteUserFromTeam(user, team string) error {
 	res, err := c.httpClient.Do(req)
 	if err != nil {
 		logger.Error().Err(err)
+		return err
 	}
 	logger.Debug().Int("status_code", res.StatusCode).Send()
-	return err
+	return nil
 }
 
 func (c *Client) GetTeams() (*Response[[]string], error) {
