@@ -516,10 +516,11 @@ func (c *Client) DeleteUserFromTeam(user, team string) error {
 		logger.Error().Caller().Err(err).Send()
 		return ErrInvalidRequest
 	}
-	_, err = c.httpClient.Do(req)
+	res, err := c.httpClient.Do(req)
 	if err != nil {
 		logger.Error().Err(err)
 	}
+	logger.Debug().Int("status_code", res.StatusCode).Send()
 	return err
 }
 
