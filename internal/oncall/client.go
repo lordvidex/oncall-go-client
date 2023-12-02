@@ -122,31 +122,39 @@ func (c *Client) Login(ctx context.Context) error {
 }
 
 // LoadConfig reads a yaml file and creates the entities (teams, users and schedules) in this file
-func (c *Client) LoadConfig(filename string) error {
+func LoadConfig(filename string) (Config, error) {
 	var config Config
 	file, err := os.Open(filename)
 	if err != nil {
-		c.logger.Error().Caller().Err(err).Msg("failure opening file")
-		return err
+		return config, err
 	}
 	defer file.Close()
 
 	err = yaml.NewDecoder(file).Decode(&config)
 	if err != nil {
-		c.logger.Err(err).Msgf("error decoding yaml file: %s", filename)
-		return err
+		return config, err
 	}
-	return c.createEntities(config)
+	return config, err
 }
 
-func (c *Client) createEntities(config Config) error {
+// func (c *Client)
+
+func (c *Client) CreateEntities(config Config) (map[string]*TeamResponse, error) {
+	res := make(map[string]*TeamResponse)
+	var errs []error
 	for _, t := range config.Teams {
-		err := c.CreateTeam(t)
+		v, err := c.CreateTeam(t)
 		if err != nil {
-			return err
+			errs = append(errs, err)
+			continue
 		}
+		res[t.Name] = v
 	}
-	return nil
+	var err error
+	if len(errs) > 0 {
+		err = errors.Join(errs...)
+	}
+	return res, err
 }
 
 func (c *Client) CreateSchedule(username, teamname string, schedule []Duty) error {
@@ -157,7 +165,7 @@ func (c *Client) CreateSchedule(username, teamname string, schedule []Duty) erro
 		Str("team", teamname).
 		Logger()
 
-	logger.Info().Msg("creating schedule")
+	logger.Debug().Msg("creating schedule")
 
 	var errs []error
 	for _, duty := range schedule {
@@ -230,7 +238,7 @@ func (c *Client) addDayDuty(duty Duty, username, teamname string) error {
 	}
 	defer res.Body.Close()
 
-	logger.Info().
+	logger.Debug().
 		Int("status_code", res.StatusCode).Send()
 	if res.StatusCode != http.StatusCreated {
 		b, _ := io.ReadAll(res.Body)
@@ -266,14 +274,41 @@ func (c *Client) existsDayDuty(username, teamname string, start, end int64, role
 	return len(items) > 0
 }
 
-// CreateUser is a two-step HTTP request (POST) that first creates the username of the user
-// and sends a PUT request to add the user's data
-func (c *Client) CreateUser(u User) error {
-	logger := c.logger.With().Str("user", u.Name).Str("action", "create_user").Logger()
-	logger.Info().Msgf("creating user")
-	endpoint, err := url.JoinPath(c.oncallURL, usersEndpoint)
+func (c *Client) DeleteUser(name string) error {
+	logger := c.logger.With().Str("user_name", name).Str("action", "delete_user").Logger()
+	endpoint, err := url.JoinPath(c.oncallURL, usersEndpoint, name)
 	if err != nil {
 		return ErrInvalidEndpoint
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "DELETE", endpoint, nil)
+	if err != nil {
+		logger.Error().Caller().Err(err).Msg("error creating delete request")
+		return err
+	}
+	req.Header.Set("X-CSRF-TOKEN", c.csrfToken)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		logger.Error().Caller().Err(err).Msg("error deleting user")
+		return err
+	}
+	defer res.Body.Close()
+
+	logger.Debug().Int("status_code", res.StatusCode).Send()
+	return nil
+}
+
+// CreateUser is a two-step HTTP request (POST) that first creates the username of the user
+// and sends a PUT request to add the user's data
+func (c *Client) CreateUser(u User) (*Response[any], error) {
+	logger := c.logger.With().Str("user", u.Name).Str("action", "create_user").Logger()
+	logger.Debug().Msgf("creating user")
+	endpoint, err := url.JoinPath(c.oncallURL, usersEndpoint)
+	if err != nil {
+		return nil, ErrInvalidEndpoint
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
@@ -285,25 +320,33 @@ func (c *Client) CreateUser(u User) error {
 	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(b))
 	if err != nil {
 		logger.Error().Caller().Err(err).Send()
-		return ErrInvalidRequest
+		return nil, ErrInvalidRequest
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-CSRF-TOKEN", c.csrfToken)
+
+	result := Response[any]{}
+	startTime := time.Now()
+
 	res, err := c.httpClient.Do(req)
 	if err != nil {
 		logger.Error().Caller().Err(err).Msg("error creating user")
-		return err
+		return nil, err
 	}
 	defer res.Body.Close()
 
-	logger.Info().
+	// record metrics
+	result.ResponseTime = time.Since(startTime)
+	result.StatusCode = res.StatusCode
+
+	logger.Debug().
 		Int("status_code", res.StatusCode).Send()
 	if res.StatusCode != http.StatusCreated {
 		logger.Warn().Msg("status code is not 201")
 	}
 
 	// PUT data
-	logger.Info().Msg("updating user data")
+	logger.Debug().Msg("updating user data")
 	data := dto.UserCreateDTO{
 		Name:     u.Name,
 		FullName: u.FullName,
@@ -315,12 +358,12 @@ func (c *Client) CreateUser(u User) error {
 	b, _ = json.Marshal(data)
 	endpoint, err = url.JoinPath(endpoint, u.Name)
 	if err != nil {
-		return ErrInvalidEndpoint
+		return nil, ErrInvalidEndpoint
 	}
 	req, err = http.NewRequest(http.MethodPut, endpoint, bytes.NewReader(b))
 	if err != nil {
 		logger.Error().Caller().Err(err).Send()
-		return ErrInvalidRequest
+		return nil, ErrInvalidRequest
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-CSRF-TOKEN", c.csrfToken)
@@ -328,19 +371,25 @@ func (c *Client) CreateUser(u User) error {
 	res, err = c.httpClient.Do(req)
 	if err != nil {
 		logger.Error().Caller().Err(err).Msg("error updating user data")
-		return err
+		return nil, err
 	}
 	defer res.Body.Close()
-	logger.Info().Int("status_code", res.StatusCode).Send()
-	return nil
+	logger.Debug().Int("status_code", res.StatusCode).Send()
+	return &result, nil
 }
 
-func (c *Client) CreateTeam(t Team) error {
+type TeamResponse struct {
+	Response               *Response[any]
+	UserCreateResponses    map[string]*Response[any]
+	UserAddToTeamResponses map[string]*Response[any]
+}
+
+func (c *Client) CreateTeam(t Team) (*TeamResponse, error) {
 	logger := c.logger.With().Str("action", "create_team").Logger()
-	logger.Info().Msgf("creating team: %s", t.Name)
+	logger.Debug().Msgf("creating team: %s", t.Name)
 	endpoint, err := url.JoinPath(c.oncallURL, teamsEndpoint)
 	if err != nil {
-		return ErrInvalidEndpoint
+		return nil, ErrInvalidEndpoint
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
@@ -358,19 +407,31 @@ func (c *Client) CreateTeam(t Team) error {
 	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(b))
 	if err != nil {
 		logger.Error().Caller().Err(err).Send()
-		return ErrInvalidRequest
+		return nil, ErrInvalidRequest
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-CSRF-TOKEN", c.csrfToken)
+
+	result := TeamResponse{
+		Response: &Response[any]{},
+	}
+
+	startTime := time.Now()
+
+	// perform request
 	res, err := c.httpClient.Do(req)
 	if err != nil {
 		logger.Error().Caller().Err(err).Msg("error creating team")
-		return err
+		return nil, err
 	}
 	defer res.Body.Close()
 
-	logger.Info().
+	// record metrics
+	result.Response.ResponseTime = time.Since(startTime)
+	result.Response.StatusCode = res.StatusCode
+	logger.Debug().
 		Int("status_code", res.StatusCode).Send()
+
 	if res.StatusCode != http.StatusCreated {
 		logger.Warn().Msg("status code is not 201")
 	}
@@ -379,15 +440,19 @@ func (c *Client) CreateTeam(t Team) error {
 			Str("user_name", u.Name).
 			Str("team_name", t.Name).
 			Logger()
-		err := c.CreateUser(u)
+		userResult, err := c.CreateUser(u)
 		if err != nil {
 			logger.Warn().Err(err).
 				Msg("error creating user")
+		} else {
+			result.UserCreateResponses[u.Name] = userResult
 		}
-		err = c.AddUserToTeam(u.Name, t.Name)
+		userResult, err = c.AddUserToTeam(u.Name, t.Name)
 		if err != nil {
 			logger.Warn().Err(err).
 				Msg("error adding user to team")
+		} else {
+			result.UserAddToTeamResponses[u.Name] = userResult
 		}
 		err = c.CreateSchedule(u.Name, t.Name, u.Schedule)
 		if err != nil {
@@ -395,7 +460,55 @@ func (c *Client) CreateTeam(t Team) error {
 				Msg("error creating event")
 		}
 	}
-	return nil
+	return &result, nil
+}
+
+func (c *Client) DeleteTeam(team string) error {
+	logger := c.logger.With().Str("action", "delete_team").Str("team", team).Logger()
+	endpoint, err := url.JoinPath(c.oncallURL, teamsEndpoint, team)
+	if err != nil {
+		return ErrInvalidEndpoint
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "DELETE", endpoint, nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-CSRF-TOKEN", c.csrfToken)
+
+	if err != nil {
+		logger.Error().Caller().Err(err).Send()
+		return ErrInvalidRequest
+	}
+	_, err = c.httpClient.Do(req)
+	if err != nil {
+		logger.Error().Err(err)
+	}
+	return err
+}
+
+func (c *Client) DeleteUserFromTeam(user, team string) error {
+	logger := c.logger.With().Str("action", "remove_user_from_team").Str("team", team).Str("user", user).Logger()
+	endpoint, err := url.JoinPath(c.oncallURL, teamsEndpoint, team, "users", user)
+	if err != nil {
+		return ErrInvalidEndpoint
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "DELETE", endpoint, nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-CSRF-TOKEN", c.csrfToken)
+
+	if err != nil {
+		logger.Error().Caller().Err(err).Send()
+		return ErrInvalidRequest
+	}
+	_, err = c.httpClient.Do(req)
+	if err != nil {
+		logger.Error().Err(err)
+	}
+	return err
 }
 
 func (c *Client) GetTeams() (*Response[[]string], error) {
@@ -428,7 +541,7 @@ func (c *Client) GetTeams() (*Response[[]string], error) {
 	// record metrics
 	result.ResponseTime = time.Since(startTime)
 	result.StatusCode = res.StatusCode
-	logger.Info().Int("status_code", res.StatusCode).Send()
+	logger.Debug().Int("status_code", res.StatusCode).Send()
 
 	if err = json.NewDecoder(res.Body).Decode(&result.Data); err != nil {
 		return nil, err
@@ -468,7 +581,7 @@ func (c *Client) GetSummary(team string) (*Response[map[string]int], error) {
 	// record metrics
 	result.ResponseTime = time.Since(startTime)
 	result.StatusCode = res.StatusCode
-	logger.Info().Int("status_code", res.StatusCode).Send()
+	logger.Debug().Int("status_code", res.StatusCode).Send()
 
 	var response map[string]map[string][]any
 	if err = json.NewDecoder(res.Body).Decode(&response); err != nil {
@@ -483,12 +596,12 @@ func (c *Client) GetSummary(team string) (*Response[map[string]int], error) {
 	return &result, nil
 }
 
-func (c *Client) AddUserToTeam(username, teamname string) error {
+func (c *Client) AddUserToTeam(username, teamname string) (*Response[any], error) {
 	logger := c.logger.With().Str("action", "add_user_to_team").Logger()
-	logger.Info().Msgf("adding user %s to team %s", username, teamname)
+	logger.Debug().Msgf("adding user %s to team %s", username, teamname)
 	endpoint, err := url.JoinPath(c.oncallURL, teamsEndpoint, teamname, "users")
 	if err != nil {
-		return ErrInvalidEndpoint
+		return nil, ErrInvalidEndpoint
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
@@ -502,21 +615,28 @@ func (c *Client) AddUserToTeam(username, teamname string) error {
 	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(b))
 	if err != nil {
 		logger.Error().Caller().Err(err).Send()
-		return ErrInvalidRequest
+		return nil, ErrInvalidRequest
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-CSRF-TOKEN", c.csrfToken)
+
+	result := Response[any]{}
+	startTime := time.Now()
+
 	res, err := c.httpClient.Do(req)
 	if err != nil {
 		logger.Error().Caller().Err(err).Msg("error adding user to team")
-		return err
+		return nil, err
 	}
 	defer res.Body.Close()
 
-	logger.Info().
+	// record metrics
+	result.ResponseTime = time.Since(startTime)
+	result.StatusCode = res.StatusCode
+	logger.Debug().
 		Int("status_code", res.StatusCode).Send()
 	if res.StatusCode != http.StatusCreated {
 		logger.Warn().Msg("status code is not 201")
 	}
-	return nil
+	return &result, nil
 }

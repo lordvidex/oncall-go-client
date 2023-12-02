@@ -6,8 +6,9 @@ package main
 import (
 	"flag"
 
-	"github.com/lordvidex/oncall-go-client/internal/oncall"
 	"github.com/rs/zerolog"
+
+	"github.com/lordvidex/oncall-go-client/internal/oncall"
 )
 
 var (
@@ -31,9 +32,13 @@ func main() {
 	if err != nil {
 		logger.Fatal().Err(err).Send()
 	}
-	err = client.LoadConfig(filename)
+	config, err := oncall.LoadConfig(filename)
 	if err != nil {
-		logger.Error().Err(err).Send()
+		logger.Error().Err(err).Msg("error loading config")
+		return
+	}
+	if _, err = client.CreateEntities(config); err != nil {
+		logger.Error().Err(err).Msg("failed to create entities")
 		return
 	}
 
