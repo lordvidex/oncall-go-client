@@ -143,7 +143,7 @@ func (c *Client) CreateEntities(config Config) (map[string]*TeamResponse, error)
 	res := make(map[string]*TeamResponse)
 	var errs []error
 	for _, t := range config.Teams {
-		v, err := c.CreateTeam(t)
+		v, err := c.CreateTeam(t, false)
 		if err != nil {
 			errs = append(errs, err)
 			continue
@@ -394,7 +394,7 @@ type TeamResponse struct {
 	UserAddToTeamResponses map[string]*Response[any]
 }
 
-func (c *Client) CreateTeam(t Team) (*TeamResponse, error) {
+func (c *Client) CreateTeam(t Team, returnEarly bool) (*TeamResponse, error) {
 	logger := c.logger.With().Str("action", "create_team").Logger()
 	logger.Debug().Msgf("creating team: %s", t.Name)
 	endpoint, err := url.JoinPath(c.oncallURL, teamsEndpoint)
@@ -434,7 +434,9 @@ func (c *Client) CreateTeam(t Team) (*TeamResponse, error) {
 	res, err := c.httpClient.Do(req)
 	if err != nil {
 		logger.Error().Caller().Err(err).Msg("error creating team")
-		return nil, err
+		if !returnEarly {
+			goto USERS
+		}
 	}
 	defer res.Body.Close()
 
@@ -447,6 +449,7 @@ func (c *Client) CreateTeam(t Team) (*TeamResponse, error) {
 	if res.StatusCode != http.StatusCreated {
 		logger.Warn().Msg("status code is not 201")
 	}
+USERS:
 	for _, u := range t.Users {
 		logger := logger.With().
 			Str("user_name", u.Name).

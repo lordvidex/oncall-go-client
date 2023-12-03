@@ -172,11 +172,11 @@ func (a *app) runScenarios() error {
 			createTeamScenarioSuccess.Add(0)
 			continue
 		}
-		createTeamScenarioDurationSeconds.Set(float64(teamStat.Response.ResponseTime.Seconds()))
-		if teamStat.Response.StatusCode <= 201 {
-			createUserScenarioSuccess.Inc()
+		if teamStat.Response.StatusCode != 0 && teamStat.Response.StatusCode <= 201 {
+			createTeamScenarioDurationSeconds.Set(float64(teamStat.Response.ResponseTime.Seconds()))
+			createTeamScenarioSuccess.Inc()
 		} else {
-			createUserScenarioSuccess.Add(0)
+			createTeamScenarioSuccess.Add(0)
 		}
 
 		// users
@@ -185,11 +185,7 @@ func (a *app) runScenarios() error {
 			addUserToTeamScenarioTotal.Inc()
 
 			createRes, ok := teamStat.UserCreateResponses[u.Name]
-			if !ok {
-				createUserScenarioSuccess.Add(0)
-				continue
-			}
-			if createRes.StatusCode != 0 && createRes.StatusCode <= 201 {
+			if ok && createRes.StatusCode != 0 && createRes.StatusCode <= 201 {
 				createUserScenarioSuccess.Inc()
 				createUserScenarioDurationSeconds.Set(float64(createRes.ResponseTime.Seconds()))
 			} else {
@@ -197,11 +193,7 @@ func (a *app) runScenarios() error {
 			}
 
 			addRes, ok := teamStat.UserAddToTeamResponses[u.Name]
-			if !ok {
-				addUserToTeamScenarioSuccess.Add(0)
-				continue
-			}
-			if addRes.StatusCode != 0 && addRes.StatusCode <= 201 {
+			if ok && addRes.StatusCode != 0 && addRes.StatusCode <= 201 {
 				addUserToTeamScenarioSuccess.Inc()
 				addUserToTeamScenarioDurationSeconds.Set(float64(addRes.ResponseTime.Seconds()))
 			} else {
