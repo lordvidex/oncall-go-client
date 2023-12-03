@@ -1,0 +1,11 @@
+metrics:
+  - slo: 99
+    alias: prober_add_user_to_team_scenario_success_percent
+    default_value: 0
+    metric: |
+      (increase(prober_add_user_to_team_scenario_success_total[1m]) * 100) / increase(prober_add_user_to_team_scenario_total[1m])
+  - slo: 99.9
+    alias: prober_create_user_scenario_success_percent
+    default_value: 0
+    metric: |
+      (increase(prober_create_user_scenario_success_total[1m]) * 100) / increase(prober_create_user_scenario_total[1m])

@@ -10,7 +10,7 @@ build:
 export:
 	GOOS=linux GOARCH=amd64 go build -o $(EXPORTER-NAME) ./cmd/roster-exporter/main.go
 	GOOS=linux GOARCH=amd64 go build -o $(PROBER-NAME) ./cmd/sla-prober/main.go
-	docker build --no-cache -t $(USER)/oncall-roster-exporter:latest .
+	docker build --no-cache -f ./deployments/roster-exporter/Dockerfile -t $(USER)/oncall-roster-exporter:latest .
 	docker build --no-cache -f ./deployments/sla-prober/Dockerfile -t $(USER)/oncall-sla-prober:latest .
 
 deploy: export
