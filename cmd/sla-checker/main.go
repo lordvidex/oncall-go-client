@@ -4,20 +4,24 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/caarlos0/env/v9"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/lordvidex/oncall-go-client/migrations"
-	"github.com/m7shapan/njson"
-	"github.com/pressly/goose/v3"
-	"github.com/rs/zerolog"
-	"gopkg.in/yaml.v3"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/caarlos0/env/v9"
+	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/m7shapan/njson"
+	"github.com/pressly/goose/v3"
+	"github.com/rs/zerolog"
+	"gopkg.in/yaml.v3"
+
+	"github.com/lordvidex/oncall-go-client/migrations"
 )
 
 type config struct {
@@ -26,7 +30,6 @@ type config struct {
 	ScrapeInterval string `env:"SCRAPE_INTERVAL" envDefault:"1m"`
 	LogLevel       string `env:"LOG_LEVEL"                   envDefault:"info"`
 	MetricsFile    string `env:"METRICS_FILE,notEmpty"`
-	HTTPPort       uint   `env:"HTTP_PORT"                   envDefault:"8080"`
 }
 
 func (a *app) promFetch(ctx context.Context, query string, defaultSLI float64) (value float64, err error) {
@@ -73,18 +76,19 @@ func (a *app) promFetch(ctx context.Context, query string, defaultSLI float64) (
 }
 
 type app struct {
-	Cfg        config
 	L          *zerolog.Logger
 	HTTPClient *http.Client
-	Metrics    []metric `yaml:"metrics"`
 	pool       *pgxpool.Pool
+	Cfg        config
+	Metrics    []metric `yaml:"metrics"`
 }
 
 type metric struct {
-	SLO        float64 `yaml:"slo"`
 	Alias      string  `yaml:"alias"`
 	Metric     string  `yaml:"metric"`
+	SLO        float64 `yaml:"slo"`
 	DefaultSLI float64 `yaml:"default_value"`
+	LessThan   bool    `yaml:"less_than"`
 }
 
 func (a *app) insertMetrics(ctx context.Context) error {
@@ -96,7 +100,13 @@ func (a *app) insertMetrics(ctx context.Context) error {
 				Err(err).
 				Msg("error fetching metric")
 		}
-		err = a.insertDB(ctx, m.Alias, m.Metric, m.SLO, v, v > m.SLO)
+		var met bool
+		if m.LessThan {
+			met = v < m.SLO
+		} else {
+			met = v > m.SLO
+		}
+		err = a.insertDB(ctx, m.Alias, m.Metric, m.SLO, v, met)
 		if err != nil {
 			logger.Error().Err(err).Msg("error inserting to db")
 			return err
@@ -130,6 +140,9 @@ func (a *app) loadMetrics() error {
 	}
 	if len(a.Metrics) == 0 {
 		return errors.New("no metrics loaded")
+	}
+	for i := 0; i < len(a.Metrics); i++ {
+		a.Metrics[i].Metric = strings.TrimSpace(a.Metrics[i].Metric)
 	}
 	return nil
 }

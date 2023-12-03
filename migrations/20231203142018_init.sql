@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS sla_record (
     value FLOAT4 NOT NULL,
     met BOOLEAN NOT NULL DEFAULT TRUE
 );
-CREATE UNIQUE INDEX IF NOT EXISTS sla_record_alias_idx ON sla_record(alias);
+CREATE INDEX IF NOT EXISTS sla_record_alias_idx ON sla_record(alias);
 -- +goose StatementEnd
 
 -- +goose Down
